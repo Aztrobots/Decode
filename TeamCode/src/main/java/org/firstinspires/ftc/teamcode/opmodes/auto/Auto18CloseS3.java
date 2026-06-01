@@ -23,13 +23,13 @@ import org.firstinspires.ftc.teamcode.subsystems.TurretSubsystem;
 @Autonomous(name = "18 Close S3 [RED]", group = "!")
 public class Auto18CloseS3 extends OpMode {
 
-    // ─── CONSTANTES DE CAMPO ─────────────────────────────────────────────────
+
     private static final Pose START_POSE  = new Pose(128.500, 111.000, Math.toRadians(-90));
     private static final Pose SHOOT_POSE  = new Pose(90.844,   76.922, Math.toRadians(0));
     private static final Pose GATE_TAKE   = new Pose(136.5,    58.5,   Math.toRadians(40));
     private static final Pose STACK3_POSE = new Pose(120.297,  35.000, Math.toRadians(-90));
 
-    // ─── OBJETOS ─────────────────────────────────────────────────────────────
+
     private Follower  follower;
     private AutoRobot robot;
 
