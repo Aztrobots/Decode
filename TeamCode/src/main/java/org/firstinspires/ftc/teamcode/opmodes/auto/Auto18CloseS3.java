@@ -8,7 +8,6 @@ import com.pedropathing.geometry.Pose;
 import com.pedropathing.paths.PathChain;
 import com.qualcomm.hardware.gobilda.GoBildaPinpointDriver;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
-import com.qualcomm.robotcore.eventloop.opmode.Disabled;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import com.qualcomm.robotcore.util.ElapsedTime;
 
@@ -19,47 +18,53 @@ import org.firstinspires.ftc.teamcode.subsystems.ShooterSubsystem;
 import org.firstinspires.ftc.teamcode.subsystems.TurretSubsystem;
 
 
-@Disabled
 @Autonomous(name = "18 Close S3 [RED]", group = "!")
 public class Auto18CloseS3 extends OpMode {
 
+    // ─── FIELD CONSTANTS ─────────────────────────────────────────────────────
+    private static final Pose START_POSE  = new Pose(123.781, 121.688, Math.toRadians(35));
+    private static final Pose SHOOT_POSE  = new Pose(99.984,   83.672, Math.toRadians(0));
+    private static final Pose GATE_TAKE1  = new Pose(134.000,  60.000, Math.toRadians(35));
+    private static final Pose GATE_TAKE2  = new Pose(134.000,  60.000, Math.toRadians(35));
+    private static final Pose GATE_TAKE3  = new Pose(134.000,  60.000, Math.toRadians(35));
 
-    private static final Pose START_POSE  = new Pose(128.500, 111.000, Math.toRadians(-90));
-    private static final Pose SHOOT_POSE  = new Pose(90.844,   76.922, Math.toRadians(0));
-    private static final Pose GATE_TAKE   = new Pose(136.5,    58.5,   Math.toRadians(40));
-    private static final Pose STACK3_POSE = new Pose(120.297,  35.000, Math.toRadians(-90));
+    private static final long DRIVE_SETTLE_MS = 80;
 
-
+    // ─── OBJECTS ─────────────────────────────────────────────────────────────
     private Follower  follower;
     private AutoRobot robot;
 
     // ─── PATHS ───────────────────────────────────────────────────────────────
-    private PathChain pathPreLoad;
-    private PathChain pathStack1;
-    private PathChain pathShoot;
-    private PathChain pathStack2;
-    private PathChain pathShoot1;
-    private PathChain pathTake1;
-    private PathChain pathShoot2;
-    private PathChain pathStack3;
-    private PathChain pathShoot3;
+    private PathChain PreLoad;
+    private PathChain Stack1;
+    private PathChain Shoot;
+    private PathChain Stack2;
+    private PathChain Shoot1;
+    private PathChain toGate1;
+    private PathChain shootFromGate1;
+    private PathChain toGate2;
+    private PathChain shootFromGate2;
+    private PathChain toGate3;
+    private PathChain shootFromGate3;
 
     // ─── FSM ─────────────────────────────────────────────────────────────────
     private enum AutoState {
-        PRELOAD_DRIVE, PRELOAD_EXEC,   // ← dispara precargadas antes de ir a Stack1
-        STACK1_DRIVE,
-        SHOOT_DRIVE,   SHOOT_EXEC,
-        STACK2_DRIVE,
-        SHOOT1_DRIVE,  SHOOT1_EXEC,
-        TAKE1_DRIVE,   TAKE1_HOLD,
-        SHOOT2_DRIVE,  SHOOT2_EXEC,
-        // STACK3_DRIVE, STACK3_HOLD,
-        // SHOOT3_DRIVE, SHOOT3_EXEC,
+        PRELOAD,        SHOOT_PRELOAD,
+        STACK1,
+        BACK_TO_SHOOT,  SHOOT,
+        STACK2,
+        BACK_TO_SHOOT1, SHOOT1,
+        GATE1,    GATE1_HOLD,  BACK_FROM_GATE1,  SHOOTGATE1,
+        GATE2,    GATE2_HOLD,  BACK_FROM_GATE2,  SHOOTGATE2,
+        GATE3,    GATE3_HOLD,  BACK_FROM_GATE3,  SHOOTGATE3,
         DONE
     }
 
-    private AutoState state = AutoState.PRELOAD_DRIVE;
+    private AutoState state = AutoState.PRELOAD;
     private final ElapsedTime matchTimer = new ElapsedTime();
+
+    private boolean shotFired    = false;
+    private boolean pathEndArmed = false;
 
     // ─── INIT ────────────────────────────────────────────────────────────────
     @Override
@@ -92,12 +97,8 @@ public class Auto18CloseS3 extends OpMode {
         robot.start();
         shooter().state = ShooterSubsystem.ShooterState.SHOOTER_ON;
         shooter().setTargetVelocity(AutoRobot.SHOOT_FAR_TPS);
-
-        // Intake lento durante el drive inicial — no satura el mecanismo en movimiento.
-        robot.intake.setState(IntakeSubsystem.IntakeState.COLLECTING_SLOW);
-
-        follower.followPath(pathPreLoad, true);
-        state = AutoState.PRELOAD_DRIVE;
+        follower.followPath(PreLoad, true);
+        state = AutoState.PRELOAD;
     }
 
     // ─── LOOP ────────────────────────────────────────────────────────────────
@@ -105,6 +106,10 @@ public class Auto18CloseS3 extends OpMode {
     public void loop() {
         follower.update();
         robot.update();
+
+        if (!pathEndArmed && inPhaseFor(DRIVE_SETTLE_MS)) {
+            pathEndArmed = true;
+        }
 
         runFSM();
 
@@ -118,166 +123,216 @@ public class Auto18CloseS3 extends OpMode {
         telemetry.addData("ShootCmd fin", robot.shootCommand.isFinished());
         telemetry.addData("BurstState",   robot.shooter.getShootState());
         telemetry.addData("atParamEnd",   follower.atParametricEnd());
+        telemetry.addData("isBusy",       follower.isBusy());
+        telemetry.addData("shotFired",    shotFired);
+        telemetry.addData("pathEndArmed", pathEndArmed);
         telemetry.addData("Time (s)",     matchTimer.seconds());
         telemetry.update();
+    }
+
+    // ─── HELPERS ─────────────────────────────────────────────────────────────
+    private boolean atEnd() {
+        return pathEndArmed && follower.atParametricEnd();
     }
 
     // ─── FSM ─────────────────────────────────────────────────────────────────
     private void runFSM() {
         switch (state) {
 
-            // Navega al primer shoot pose cargando lento.
-            case PRELOAD_DRIVE:
-                if (follower.atParametricEnd()) {
-                    transition(AutoState.PRELOAD_EXEC);
+            case PRELOAD:
+                if (atEnd()) {
+                    robot.intake.setState(IntakeSubsystem.IntakeState.IDLE);
+                    transition(AutoState.SHOOT_PRELOAD);
                 }
                 break;
 
-            // Dispara precargadas, luego va a Stack1 con intake COLLECTING.
-            case PRELOAD_EXEC:
-                if (!robot.shootCommand.isRunning() && !robot.shootCommand.isFinished()) {
+            case SHOOT_PRELOAD:
+                if (!shotFired) {
+                    robot.shootCommand = robot.buildShootCommand(AutoRobot.SHOOT_NEAR_TPS);
                     robot.shootCommand.start();
+                    shotFired = true;
                 } else if (robot.shootCommand.isFinished()) {
                     robot.intake.setState(IntakeSubsystem.IntakeState.COLLECTING);
-                    follower.followPath(pathStack1, true);
-                    transition(AutoState.STACK1_DRIVE);
+                    follower.followPath(Stack1, true);
+                    transition(AutoState.STACK1);
                 }
                 break;
 
-            // HoldPoint en Stack1 — intake COLLECTING ya activo desde PRELOAD_EXEC.
-            case STACK1_DRIVE:
-                if (!follower.isBusy()) {
+            case STACK1:
+                if (atEnd()) {
                     follower.holdPoint(
-                            new BezierPoint(new Pose(121.000, 86.453, Math.toRadians(-90))),
-                            Math.toRadians(-90));
-                    transition(AutoState.SHOOT_DRIVE);
+                            new BezierPoint(new Pose(127.531, 83.875, Math.toRadians(0))),
+                            Math.toRadians(0));
+                    transition(AutoState.BACK_TO_SHOOT);
                 }
                 break;
 
-            // Timer de espera en stack; luego navega al shoot pose con intake SLOW.
-            case SHOOT_DRIVE:
-                if (inPhaseFor(1000)) {
-                    robot.intake.setState(IntakeSubsystem.IntakeState.COLLECTING_SLOW);
-                    follower.followPath(pathShoot, true);
-                    transition(AutoState.SHOOT_EXEC);
+            case BACK_TO_SHOOT:
+                if (inPhaseFor(800)) {
+                    robot.intake.setState(IntakeSubsystem.IntakeState.IDLE);
+                    follower.followPath(Shoot, true);
+                    transition(AutoState.SHOOT);
                 }
                 break;
 
-            case SHOOT_EXEC:
-                if (follower.atParametricEnd()) {
-                    if (!robot.shootCommand.isRunning() && !robot.shootCommand.isFinished()) {
+            case SHOOT:
+                if (atEnd()) {
+                    if (!shotFired) {
+                        robot.shootCommand = robot.buildShootCommand(AutoRobot.SHOOT_NEAR_TPS);
                         robot.shootCommand.start();
+                        shotFired = true;
                     } else if (robot.shootCommand.isFinished()) {
                         robot.intake.setState(IntakeSubsystem.IntakeState.COLLECTING);
-                        follower.followPath(pathStack2, true);
-                        transition(AutoState.STACK2_DRIVE);
+                        follower.followPath(Stack2, true);
+                        transition(AutoState.STACK2);
                     }
                 }
                 break;
 
-            // HoldPoint en Stack2.
-            case STACK2_DRIVE:
-                if (!follower.isBusy()) {
+            case STACK2:
+                if (atEnd()) {
                     follower.holdPoint(
-                            new BezierPoint(new Pose(121.534, 60.450, Math.toRadians(-90))),
-                            Math.toRadians(-90));
-                    transition(AutoState.SHOOT1_DRIVE);
+                            new BezierPoint(new Pose(128.781, 59.594, Math.toRadians(0))),
+                            Math.toRadians(0));
+                    transition(AutoState.BACK_TO_SHOOT1);
                 }
                 break;
 
-            case SHOOT1_DRIVE:
-                if (inPhaseFor(1000)) {
-                    robot.intake.setState(IntakeSubsystem.IntakeState.COLLECTING_SLOW);
-                    follower.followPath(pathShoot1, true);
-                    transition(AutoState.SHOOT1_EXEC);
+            case BACK_TO_SHOOT1:
+                if (inPhaseFor(500)) {
+                    robot.intake.setState(IntakeSubsystem.IntakeState.IDLE);
+                    follower.followPath(Shoot1, true);
+                    transition(AutoState.SHOOT1);
                 }
                 break;
 
-            case SHOOT1_EXEC:
-                if (follower.atParametricEnd()) {
-                    if (!robot.shootCommand.isRunning() && !robot.shootCommand.isFinished()) {
+            case SHOOT1:
+                if (atEnd()) {
+                    if (!shotFired) {
+                        robot.shootCommand = robot.buildShootCommand(AutoRobot.SHOOT_FAR_TPS);
                         robot.shootCommand.start();
+                        shotFired = true;
                     } else if (robot.shootCommand.isFinished()) {
-                        // Directo a GATE_TAKE — sin approach intermedio.
                         robot.intake.setState(IntakeSubsystem.IntakeState.COLLECTING);
-                        follower.followPath(pathTake1, true);
-                        transition(AutoState.TAKE1_DRIVE);
+                        follower.followPath(toGate1, true);
+                        transition(AutoState.GATE1);
                     }
                 }
                 break;
 
-            // HoldPoint en GATE_TAKE — intake COLLECTING ya activo.
-            case TAKE1_DRIVE:
-                if (!follower.isBusy()) {
-                    follower.holdPoint(new BezierPoint(GATE_TAKE), GATE_TAKE.getHeading());
-                    transition(AutoState.TAKE1_HOLD);
+            // ══ GATE CYCLE 1 ══════════════════════════════════════════════════
+
+            case GATE1:
+                if (atEnd()) {
+                    follower.holdPoint(new BezierPoint(GATE_TAKE1), GATE_TAKE1.getHeading());
+                    transition(AutoState.GATE1_HOLD);
                 }
                 break;
 
-            case TAKE1_HOLD:
-                if (inPhaseFor(1000)) {
-                    robot.intake.setState(IntakeSubsystem.IntakeState.COLLECTING_SLOW);
-                    follower.followPath(pathShoot2, true);
-                    transition(AutoState.SHOOT2_DRIVE);
+            case GATE1_HOLD:
+                if (inPhaseFor(2000)) {
+                    robot.intake.setState(IntakeSubsystem.IntakeState.IDLE);
+                    follower.followPath(shootFromGate1, true);
+                    transition(AutoState.BACK_FROM_GATE1);
                 }
                 break;
 
-            case SHOOT2_DRIVE:
-                if (follower.atParametricEnd()) {
-                    if (!robot.shootCommand.isRunning() && !robot.shootCommand.isFinished()) {
+            case BACK_FROM_GATE1:
+                if (atEnd()) {
+                    if (!shotFired) {
+                        robot.shootCommand = robot.buildShootCommand(AutoRobot.SHOOT_FAR_TPS);
                         robot.shootCommand.start();
-                        transition(AutoState.SHOOT2_EXEC);
+                        shotFired = true;
+                    }
+                    if (shotFired) {
+                        transition(AutoState.SHOOTGATE1);
                     }
                 }
                 break;
 
-            case SHOOT2_EXEC:
+            case SHOOTGATE1:
                 if (robot.shootCommand.isFinished()) {
-                    // ── Descomentar para activar Stack3 ──────────────────────
-                    // robot.intake.setState(IntakeSubsystem.IntakeState.COLLECTING);
-                    // follower.followPath(pathStack3, true);
-                    // transition(AutoState.STACK3_DRIVE);
+                    robot.intake.setState(IntakeSubsystem.IntakeState.COLLECTING);
+                    follower.followPath(toGate2, true);
+                    transition(AutoState.GATE2);
+                }
+                break;
+
+            // ══ GATE CYCLE 2 ══════════════════════════════════════════════════
+
+            case GATE2:
+                if (atEnd()) {
+                    follower.holdPoint(new BezierPoint(GATE_TAKE2), GATE_TAKE2.getHeading());
+                    transition(AutoState.GATE2_HOLD);
+                }
+                break;
+
+            case GATE2_HOLD:
+                if (inPhaseFor(2000)) {
+                    robot.intake.setState(IntakeSubsystem.IntakeState.IDLE);
+                    follower.followPath(shootFromGate2, true);
+                    transition(AutoState.BACK_FROM_GATE2);
+                }
+                break;
+
+            case BACK_FROM_GATE2:
+                if (atEnd()) {
+                    if (!shotFired) {
+                        robot.shootCommand = robot.buildShootCommand(AutoRobot.SHOOT_FAR_TPS);
+                        robot.shootCommand.start();
+                        shotFired = true;
+                    }
+                    if (shotFired) {
+                        transition(AutoState.SHOOTGATE2);
+                    }
+                }
+                break;
+
+            case SHOOTGATE2:
+                if (robot.shootCommand.isFinished()) {
+                    robot.intake.setState(IntakeSubsystem.IntakeState.COLLECTING);
+                    follower.followPath(toGate3, true);
+                    transition(AutoState.GATE3);
+                }
+                break;
+
+            // ══ GATE CYCLE 3 ══════════════════════════════════════════════════
+
+            case GATE3:
+                if (atEnd()) {
+                    follower.holdPoint(new BezierPoint(GATE_TAKE3), GATE_TAKE3.getHeading());
+                    transition(AutoState.GATE3_HOLD);
+                }
+                break;
+
+            case GATE3_HOLD:
+                if (inPhaseFor(2000)) {
+                    robot.intake.setState(IntakeSubsystem.IntakeState.IDLE);
+                    follower.followPath(shootFromGate3, true);
+                    transition(AutoState.BACK_FROM_GATE3);
+                }
+                break;
+
+            case BACK_FROM_GATE3:
+                if (atEnd()) {
+                    if (!shotFired) {
+                        robot.shootCommand = robot.buildShootCommand(AutoRobot.SHOOT_FAR_TPS);
+                        robot.shootCommand.start();
+                        shotFired = true;
+                    }
+                    if (shotFired) {
+                        transition(AutoState.SHOOTGATE3);
+                    }
+                }
+                break;
+
+            case SHOOTGATE3:
+                if (robot.shootCommand.isFinished()) {
                     transition(AutoState.DONE);
                 }
                 break;
 
-            // ── Stack3 variante ──────────────────────────────────────────────
-            //
-            // case STACK3_DRIVE:
-            //     if (follower.atParametricEnd()) {
-            //         follower.holdPoint(new BezierPoint(STACK3_POSE), STACK3_POSE.getHeading());
-            //         transition(AutoState.STACK3_HOLD);
-            //     }
-            //     break;
-            //
-            // case STACK3_HOLD:
-            //     if (inPhaseFor(2000)) {
-            //         robot.intake.setState(IntakeSubsystem.IntakeState.COLLECTING_SLOW);
-            //         follower.followPath(pathShoot3, true);
-            //         transition(AutoState.SHOOT3_DRIVE);
-            //     }
-            //     break;
-            //
-            // case SHOOT3_DRIVE:
-            //     if (follower.atParametricEnd()) {
-            //         if (!robot.shootCommand.isRunning() && !robot.shootCommand.isFinished()) {
-            //             robot.shootCommand.start();
-            //             transition(AutoState.SHOOT3_EXEC);
-            //         }
-            //     }
-            //     break;
-            //
-            // case SHOOT3_EXEC:
-            //     if (robot.shootCommand.isFinished()) {
-            //         transition(AutoState.DONE);
-            //     }
-            //     break;
-
             case DONE:
-                robot.intake.setState(IntakeSubsystem.IntakeState.IDLE);
-                shooter().setTargetVelocity(0);
-                shooter().state = ShooterSubsystem.ShooterState.SHOOTER_OFF;
-                robot.turret.setMode(TurretSubsystem.TurretMode.HOLD);
                 break;
         }
     }
@@ -285,72 +340,95 @@ public class Auto18CloseS3 extends OpMode {
     // ─── BUILD PATHS ─────────────────────────────────────────────────────────
     private void buildPaths() {
 
-        pathPreLoad = follower.pathBuilder()
-                .addPath(new BezierLine(START_POSE, new Pose(111.000, 94.000)))
-                .setLinearHeadingInterpolation(Math.toRadians(-90), Math.toRadians(-90))
-                .build();
-
-        pathStack1 = follower.pathBuilder()
-                .addPath(new BezierCurve(
-                        new Pose(111.000, 94.000),
-                        new Pose(118.000, 94.000),
-                        new Pose(121.000, 86.453)))
-                .setConstantHeadingInterpolation(Math.toRadians(-90))
-                .build();
-
-        pathShoot = follower.pathBuilder()
+        PreLoad = follower.pathBuilder()
                 .addPath(new BezierLine(
-                        new Pose(121.000, 86.453),
-                        new Pose(110.000, 94.000)))
-                .setConstantHeadingInterpolation(Math.toRadians(-90))
+                        new Pose(123.781, 121.688),
+                        new Pose(99.984,   83.672)))
+                .setLinearHeadingInterpolation(Math.toRadians(35), Math.toRadians(0))
                 .build();
 
-        pathStack2 = follower.pathBuilder()
-                .addPath(new BezierCurve(
-                        new Pose(110.000, 94.000),
-                        new Pose(119.000, 82.750),
-                        new Pose(121.534, 60.450)))
-                .setConstantHeadingInterpolation(Math.toRadians(-90))
-                .build();
-
-        pathShoot1 = follower.pathBuilder()
+        Stack1 = follower.pathBuilder()
                 .addPath(new BezierLine(
-                        new Pose(121.534, 60.450),
-                        SHOOT_POSE))
-                .setConstantHeadingInterpolation(Math.toRadians(-90))
+                        new Pose(99.984,  83.672),
+                        new Pose(127.531, 83.875)))
+                .setLinearHeadingInterpolation(Math.toRadians(0), Math.toRadians(0))
                 .build();
 
-        // Directo de SHOOT_POSE a GATE_TAKE.
-        pathTake1 = follower.pathBuilder()
-                .addPath(new BezierLine(SHOOT_POSE, GATE_TAKE))
-                .setLinearHeadingInterpolation(Math.toRadians(0), Math.toRadians(40))
+        Shoot = follower.pathBuilder()
+                .addPath(new BezierLine(
+                        new Pose(127.531, 83.875),
+                        new Pose(98.625,  82.844)))
+                .setLinearHeadingInterpolation(Math.toRadians(0), Math.toRadians(0))
                 .build();
 
-        pathShoot2 = follower.pathBuilder()
-                .addPath(new BezierLine(GATE_TAKE, SHOOT_POSE))
+        Stack2 = follower.pathBuilder()
+                .addPath(new BezierCurve(
+                        new Pose(98.625,  82.844),
+                        new Pose(93.250,  55.359),
+                        new Pose(128.781, 59.594)))
+                .setLinearHeadingInterpolation(Math.toRadians(0), Math.toRadians(0))
+                .build();
+
+        Shoot1 = follower.pathBuilder()
+                .addPath(new BezierCurve(
+                        new Pose(128.781, 59.594),
+                        new Pose(96.922,  62.438),
+                        new Pose(96.563,  80.594)))
+                .setLinearHeadingInterpolation(Math.toRadians(0), Math.toRadians(0))
+                .build();
+
+        toGate1 = follower.pathBuilder()
+                .addPath(new BezierLine(
+                        new Pose(96.563, 80.594),
+                        GATE_TAKE1))
+                .setLinearHeadingInterpolation(Math.toRadians(0), Math.toRadians(35))
+                .build();
+
+        shootFromGate1 = follower.pathBuilder()
+                .addPath(new BezierLine(
+                        GATE_TAKE1,
+                        new Pose(96.438, 82.500)))
                 .setLinearHeadingInterpolation(Math.toRadians(40), Math.toRadians(0))
                 .build();
 
-        pathStack3 = follower.pathBuilder()
-                .addPath(new BezierCurve(
-                        SHOOT_POSE,
-                        new Pose(123.016, 64.133),
-                        STACK3_POSE))
-                .setConstantHeadingInterpolation(Math.toRadians(-90))
+        toGate2 = follower.pathBuilder()
+                .addPath(new BezierLine(
+                        new Pose(96.438, 82.500),
+                        GATE_TAKE2))
+                .setLinearHeadingInterpolation(Math.toRadians(0), Math.toRadians(35))
                 .build();
 
-        pathShoot3 = follower.pathBuilder()
-                .addPath(new BezierLine(STACK3_POSE, SHOOT_POSE))
-                .setConstantHeadingInterpolation(Math.toRadians(-90))
+        shootFromGate2 = follower.pathBuilder()
+                .addPath(new BezierLine(
+                        GATE_TAKE2,
+                        new Pose(96.438, 82.500)))
+                .setLinearHeadingInterpolation(Math.toRadians(40), Math.toRadians(0))
                 .build();
+
+        toGate3 = follower.pathBuilder()
+                .addPath(new BezierLine(
+                        new Pose(96.438, 82.500),
+                        GATE_TAKE3))
+                .setLinearHeadingInterpolation(Math.toRadians(0), Math.toRadians(35))
+                .build();
+
+        shootFromGate3 = follower.pathBuilder()
+                .addPath(new BezierLine(
+                        GATE_TAKE3,
+                        new Pose(96.438, 82.500)))
+                .setLinearHeadingInterpolation(Math.toRadians(40), Math.toRadians(0))
+                .build();
+
     }
 
-    // ─── UTILIDADES ──────────────────────────────────────────────────────────
+    // ─── UTILS ───────────────────────────────────────────────────────────────
     private long phaseEntryTime = 0;
 
     private void transition(AutoState newState) {
         state          = newState;
         phaseEntryTime = System.currentTimeMillis();
+        shotFired      = false;
+        pathEndArmed   = false;
     }
 
     private boolean inPhaseFor(long ms) {
