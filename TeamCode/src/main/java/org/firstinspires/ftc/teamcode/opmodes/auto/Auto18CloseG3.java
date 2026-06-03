@@ -24,9 +24,9 @@ public class Auto18CloseG3 extends OpMode {
     // ─── CONSTANTES DE CAMPO ─────────────────────────────────────────────────
     private static final Pose START_POSE = new Pose(128.500, 111.000, Math.toRadians(-90));
     private static final Pose SHOOT_POSE = new Pose(90.844,   76.922, Math.toRadians(0));
-    private static final Pose GATE_TAKE1 = new Pose(134,  60, Math.toRadians(30));
-    private static final Pose GATE_TAKE2 = new Pose(134,  60, Math.toRadians(30));
-    private static final Pose GATE_TAKE3 = new Pose(134,  60, Math.toRadians(30));
+    private static final Pose GATE_TAKE1 = new Pose(136,  57, Math.toRadians(30));
+    private static final Pose GATE_TAKE2 = new Pose(136,  57, Math.toRadians(30));
+    private static final Pose GATE_TAKE3 = new Pose(136,  57, Math.toRadians(30));
 
 
     private static final long DRIVE_SETTLE_MS = 80;
@@ -353,13 +353,13 @@ public class Auto18CloseG3 extends OpMode {
                 .addPath(new BezierCurve(
                         new Pose(111.000, 94.000),
                         new Pose(118.000, 94.000),
-                        new Pose(120.000, 85.453)))
+                        new Pose(121.2, 85.453)))
                 .setConstantHeadingInterpolation(Math.toRadians(-90))
                 .build();
 
         Shoot1 = follower.pathBuilder()
                 .addPath(new BezierLine(
-                        new Pose(121.000, 86.453),
+                        new Pose(121.2, 86.453),
                         new Pose(110.000, 94.000)))
                 .setConstantHeadingInterpolation(Math.toRadians(-90))
                 .build();
@@ -368,13 +368,13 @@ public class Auto18CloseG3 extends OpMode {
                 .addPath(new BezierCurve(
                         new Pose(110.000, 94.000),
                         new Pose(119.000, 82.750),
-                        new Pose(121.234, 60.450)))
+                        new Pose(121.2, 60.450)))
                 .setConstantHeadingInterpolation(Math.toRadians(-90))
                 .build();
 
         Shoot2 = follower.pathBuilder()
                 .addPath(new BezierLine(
-                        new Pose(121.734, 60.450),
+                        new Pose(121.2, 60.450),
                         SHOOT_POSE))
                 .setConstantHeadingInterpolation(Math.toRadians(-90))
                 .build();

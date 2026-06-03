@@ -9,43 +9,36 @@ import org.firstinspires.ftc.teamcode.tools.Hardware;
 public class IntakeSubsystem {
 
     // ─── CONFIGURABLES ────────────────────────────────────────────────────────
-    public static double INTAKE_POWER       =  1.0;
-    public static double INTAKE_SLOW_POWER  =  1;
-    public static double OUTTAKE_POWER      = -1.0;
+    public static double INTAKE_POWER      =  1.0;
+    public static double INTAKE_SLOW_POWER =  0.8;
+    public static double OUTTAKE_POWER     = -1.0;
 
     public static double FULL_TIMEOUT_MS = 1200.0;
-
 
     public enum IntakeState {
         IDLE,
         COLLECTING,
-        COLLECTING_SLOW, // intake lento (pre-transfer)
+        COLLECTING_SLOW,
         SHOOTING,
         OUTTAKE
     }
 
     private IntakeState state = IntakeState.IDLE;
 
-
     private final ElapsedTime collectTimer = new ElapsedTime();
-    private boolean collecting    = false;
-    private boolean detectedFull  = false;
-
+    private boolean collecting   = false;
+    private boolean detectedFull = false;
 
     private double cachedIntakePw = Double.NaN;
 
     private final Hardware hw;
 
+    public IntakeSubsystem(Hardware hw) { this.hw = hw; }
 
-    public IntakeSubsystem(Hardware hw) {
-        this.hw = hw;
-    }
-
-
+    // ─── API ──────────────────────────────────────────────────────────────────
 
     public void setState(IntakeState newState) {
         if (this.state != newState) {
-            // Al entrar en COLLECTING, arranca el timer
             if (newState == IntakeState.COLLECTING) {
                 if (!collecting) {
                     collecting = true;
@@ -60,23 +53,14 @@ public class IntakeSubsystem {
 
     public IntakeState getState() { return state; }
 
-    /**
-     * Retorna true cuando el timer de recolección superó FULL_TIMEOUT_MS.
-     * Usado por AutoRobot para hacer transición de intakeCommand → shootCommand.
-     */
-    public boolean intakeFull() {
-        return detectedFull;
-    }
+    public boolean intakeFull() { return detectedFull; }
 
-    /**
-     * Resetea el flag de detección entre ciclos.
-     * Llamar al inicio de cada ciclo de intake.
-     */
     public void resetDetection() {
         detectedFull = false;
         collecting   = false;
     }
 
+    // ─── UPDATE ───────────────────────────────────────────────────────────────
 
     public void update() {
         if (collecting && collectTimer.milliseconds() >= FULL_TIMEOUT_MS) {
@@ -87,28 +71,24 @@ public class IntakeSubsystem {
             case IDLE:
                 setIntake(0);
                 break;
-
             case COLLECTING:
                 setIntake(INTAKE_POWER);
                 break;
-
             case COLLECTING_SLOW:
-                setIntake(INTAKE_SLOW_POWER);
-                break;
-
             case SHOOTING:
                 setIntake(INTAKE_SLOW_POWER);
                 break;
-
             case OUTTAKE:
                 setIntake(OUTTAKE_POWER);
                 break;
         }
     }
 
+    // ─── INTERNAL ─────────────────────────────────────────────────────────────
 
     private void setIntake(double power) {
-        if (cachedIntakePw != power) {
+        // NaN-safe: igual que flywheel, primer ciclo siempre pasa
+        if (Double.isNaN(cachedIntakePw) || cachedIntakePw != power) {
             hw.intake.setPower(power);
             cachedIntakePw = power;
         }

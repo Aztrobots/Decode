@@ -17,8 +17,8 @@ public class AutoRobot {
     public final AutoCommand intakeCommand;
     public AutoCommand       shootCommand;
 
-    public static double SHOOT_FAR_TPS  = 1150;
-    public static double SHOOT_NEAR_TPS = 1000;
+    public static double SHOOT_FAR_TPS  = 1200;
+    public static double SHOOT_NEAR_TPS = 1050;
 
     public AutoRobot(OpMode opMode) {
         hw = new Hardware(opMode, false, false);

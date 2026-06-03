@@ -1,45 +1,19 @@
 package org.firstinspires.ftc.teamcode.subsystems;
 
 import com.acmerobotics.dashboard.config.Config;
-
-import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
-import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
-import org.firstinspires.ftc.robotcore.external.navigation.Pose2D;
+import com.qualcomm.robotcore.util.ElapsedTime;
 
 import org.firstinspires.ftc.teamcode.tools.Hardware;
 
-/**
- * TurretSubsystem — refactored.
- *
- * Correcciones vs. versión original:
- *
- *  1. pinpoint.update() REMOVIDO de aquí — vive en AutoRobot.update() para
- *     garantizar exactamente una llamada por loop. Llamarlo dos veces por
- *     iteración causa lecturas de posición inconsistentes.
- *
- *  2. API unificada rad/ticks:
- *     - setTargetTicks(double ticks)   → clampea y setea directamente (igual que antes)
- *     - setTargetRadians(double rad)   → convierte rad→ticks internamente y clampea
- *     AutoRobot.setAzimuthThetaVelocity() debe usar setTargetRadians() para evitar
- *     la multiplicación por TICKS_PER_RAD fuera del subsistema.
- *
- *  3. updateAimbot() preservado intacto — lee la Pose2D del Pinpoint que ya fue
- *     actualizado por AutoRobot.update() en el mismo loop tick.
- *
- *  4. Clamp de ticks documentado: ±262/+312 ticks ≈ ±2.2 rad / +2.6 rad.
- *     El rango físico de la torreta limita el aimbot cuando el robot está muy
- *     cerca del goal en ángulo extremo — comportamiento esperado.
- *
- *  5. getTargetRadians() añadido para telemetría.
- */
 @Config
 public class TurretSubsystem {
 
     // ─── CONSTANTES MECÁNICAS ─────────────────────────────────────────────────
     public static double TICKS_PER_REV = 384.54 * 1.95; // 749.85 t/rev
-    public static double TICKS_PER_RAD = TICKS_PER_REV / (2 * Math.PI); // ~119.33
 
-    // Límites físicos del recorrido de la torreta
+    // Derivado en runtime para evitar desincronización si Dashboard modifica TICKS_PER_REV
+    private static double ticksPerRad() { return TICKS_PER_REV / (2.0 * Math.PI); }
+
     public static double MAX_TICKS =  312.0;
     public static double MIN_TICKS = -262.0;
 
@@ -56,70 +30,61 @@ public class TurretSubsystem {
     public static double MAX_POWER         = 0.65;
     public static double AT_TARGET_TOL     = 10.0;
 
-    // ─── OBJETIVO EN EL CAMPO (configurable desde Dashboard) ─────────────────
-    public static double GOAL_X            = 142.0;  // in, coordenadas Pedro — RED
+    // ─── OBJETIVO EN EL CAMPO ─────────────────────────────────────────────────
+    public static double GOAL_X            = 142.0;
     public static double GOAL_Y            = 142.0;
-    public static double TURRET_OFFSET_RAD = 0.0;    // offset de montaje físico
+    public static double TURRET_OFFSET_RAD = 0.0;
 
-    // ─── ESTADO ──────────────────────────────────────────────────────────────
+    // ─── ESTADO ───────────────────────────────────────────────────────────────
     public enum TurretMode { AIMBOT, MANUAL, HOLD }
     private TurretMode mode = TurretMode.MANUAL;
 
-    private double targetTicks = 0;
-    private double lastError   = 0;
-    private double manualPower = 0;
+    private double targetTicks  = 0;
+    private double lastPosition = 0;
+    private double manualPower  = 0;
+
+    private final ElapsedTime pdTimer  = new ElapsedTime();
+    private boolean           pdFirstRun = true;
 
     private final Hardware hw;
 
-    // ─── CONSTRUCTOR ─────────────────────────────────────────────────────────
+    // ─── CONSTRUCTOR ──────────────────────────────────────────────────────────
     public TurretSubsystem(Hardware hw) {
-        this.hw          = hw;
-        this.targetTicks = clampTicks(hw.turret.getCurrentPosition());
+        this.hw           = hw;
+        this.targetTicks  = clampTicks(hw.turret.getCurrentPosition());
+        this.lastPosition = this.targetTicks;
     }
 
     // ─── API PÚBLICA ──────────────────────────────────────────────────────────
 
     public void setMode(TurretMode newMode) {
-        if (this.mode != newMode) {
-            lastError = 0;
-            // Al entrar en HOLD o AIMBOT, congela el target en la posición actual
-            // para evitar un salto brusco en el primer tick
-            if (newMode == TurretMode.HOLD || newMode == TurretMode.AIMBOT) {
-                targetTicks = clampTicks(hw.turret.getCurrentPosition());
-            }
+        if (this.mode == newMode) return;
+        if (newMode == TurretMode.HOLD || newMode == TurretMode.AIMBOT) {
+            targetTicks = clampTicks(hw.turret.getCurrentPosition());
         }
-        this.mode = newMode;
+        lastPosition = hw.turret.getCurrentPosition();
+        pdFirstRun   = true;
+        this.mode    = newMode;
     }
 
     public TurretMode getMode() { return mode; }
 
     public void setManualPower(double power) { this.manualPower = power; }
 
-    /**
-     * Setea target directamente en ticks (ya calculados externamente).
-     * Clampea al rango físico.
-     */
     public void setTargetTicks(double ticks) {
         targetTicks = clampTicks(ticks);
     }
 
-    /**
-     * Setea target en radianes — convierte internamente a ticks.
-     * Usar este método desde AutoRobot.setAzimuthThetaVelocity() para mantener
-     * la conversión encapsulada en el subsistema.
-     *
-     * @param radians ángulo relativo al robot (0 = frente, positivo = izquierda)
-     */
     public void setTargetRadians(double radians) {
-        targetTicks = clampTicks(radians * TICKS_PER_RAD);
+        targetTicks = clampTicks(radians * ticksPerRad());
     }
+
+    public void setGoal(double x, double y) { GOAL_X = x; GOAL_Y = y; }
 
     public double getCurrentTicks()   { return hw.turret.getCurrentPosition(); }
     public double getTargetTicks()    { return targetTicks; }
-    public double getTargetRadians()  { return targetTicks / TICKS_PER_RAD; }
-    public double getCurrentRadians() { return getCurrentTicks() / TICKS_PER_RAD; }
-
-    public void setGoal(double x, double y) { GOAL_X = x; GOAL_Y = y; }
+    public double getTargetRadians()  { return targetTicks / ticksPerRad(); }
+    public double getCurrentRadians() { return getCurrentTicks() / ticksPerRad(); }
 
     public boolean atTarget() {
         return Math.abs(getCurrentTicks() - targetTicks) < AT_TARGET_TOL;
@@ -127,11 +92,6 @@ public class TurretSubsystem {
 
     // ─── UPDATE ───────────────────────────────────────────────────────────────
 
-    /**
-     * Llamar una vez por loop().
-     * PRECONDICIÓN: hw.pinpoint.update() ya fue llamado en este mismo tick
-     * (AutoRobot.update() lo garantiza).
-     */
     public void update() {
         switch (mode) {
             case AIMBOT: updateAimbot(); break;
@@ -143,46 +103,54 @@ public class TurretSubsystem {
     // ─── MODOS PRIVADOS ───────────────────────────────────────────────────────
 
     private void updateAimbot() {
-        // Lee pose del Pinpoint — ya actualizado por AutoRobot.update()
-        Pose2D pose     = hw.pinpoint.getPosition();
-        double robotX   = pose.getX(DistanceUnit.INCH);
-        double robotY   = pose.getY(DistanceUnit.INCH);
-        double robotHdg = hw.pinpoint.getHeading(AngleUnit.RADIANS);
+        org.firstinspires.ftc.robotcore.external.navigation.Pose2D pose =
+                hw.pinpoint.getPosition();
+        double robotX   = pose.getX(org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit.INCH);
+        double robotY   = pose.getY(org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit.INCH);
+        double robotHdg = hw.pinpoint.getHeading(org.firstinspires.ftc.robotcore.external.navigation.AngleUnit.RADIANS);
 
         double angleToGoal   = Math.atan2(GOAL_Y - robotY, GOAL_X - robotX);
         double relativeAngle = normalizeAngle(angleToGoal - robotHdg - TURRET_OFFSET_RAD);
 
-        // Conversión rad → ticks encapsulada aquí
-        targetTicks = clampTicks(relativeAngle * TICKS_PER_RAD);
+        targetTicks = clampTicks(relativeAngle * ticksPerRad());
         runPD(targetTicks);
     }
 
     private void updateManual() {
         double currentTicks = getCurrentTicks();
         if (Math.abs(manualPower) > 0.05) {
-            // Límites físicos en modo manual
             if ((manualPower > 0 && currentTicks >= MAX_TICKS) ||
                     (manualPower < 0 && currentTicks <= MIN_TICKS)) {
                 hw.turret.setPower(0);
             } else {
                 hw.turret.setPower(manualPower * MAX_POWER);
             }
-            // Actualiza target para que HOLD tome la posición actual al soltar
-            targetTicks = clampTicks(currentTicks);
-            lastError   = 0;
+            targetTicks  = clampTicks(currentTicks);
+            lastPosition = currentTicks;
+            pdFirstRun   = true;
         } else {
-            // Joystick suelto → mantener posición
             runPD(targetTicks);
         }
     }
 
-    // ─── CONTROLADOR DUAL-PD + kS ─────────────────────────────────────────────
+    // ─── CONTROLADOR DUAL-PD + kS ────────────────────────────────────────────
 
     private void runPD(double target) {
-        double current    = getCurrentTicks();
-        double error      = target - current;
-        double derivative = error - lastError;
-        lastError = error;
+        double current = getCurrentTicks();
+        double error   = target - current;
+
+        if (pdFirstRun) {
+            pdTimer.reset();
+            lastPosition = current;
+            pdFirstRun   = false;
+        }
+
+        double dt = pdTimer.seconds();
+        pdTimer.reset();
+
+        // D sobre posición — evita derivative kick cuando el aimbot actualiza target cada loop
+        double dPosition = (dt > 0.001) ? (current - lastPosition) / dt : 0.0;
+        lastPosition = current;
 
         double kP, kD, kS;
         if (Math.abs(error) > PIDF_SWITCH_TICKS) {
@@ -191,15 +159,13 @@ public class TurretSubsystem {
             kP = KP_NEAR; kD = KD_NEAR; kS = KS_NEAR;
         }
 
-        double power = kP * error + kD * derivative;
+        double power = kP * error - kD * dPosition;
 
-        // kS: feedforward estático para vencer fricción (solo fuera de tolerancia)
         if (Math.abs(error) >= AT_TARGET_TOL) {
             power += kS * Math.signum(error);
         }
 
-        power = Math.max(-MAX_POWER, Math.min(MAX_POWER, power));
-        hw.turret.setPower(power);
+        hw.turret.setPower(Math.max(-MAX_POWER, Math.min(MAX_POWER, power)));
     }
 
     // ─── UTILIDADES ───────────────────────────────────────────────────────────
@@ -208,9 +174,8 @@ public class TurretSubsystem {
         return Math.max(MIN_TICKS, Math.min(MAX_TICKS, ticks));
     }
 
+    // O(1) en lugar de while-loop
     private double normalizeAngle(double rad) {
-        while (rad >  Math.PI) rad -= 2 * Math.PI;
-        while (rad < -Math.PI) rad += 2 * Math.PI;
-        return rad;
+        return ((rad + Math.PI) % (2.0 * Math.PI) + 2.0 * Math.PI) % (2.0 * Math.PI) - Math.PI;
     }
 }

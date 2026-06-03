@@ -65,8 +65,8 @@ public class TeleOperado extends OpMode {
     private static final double BLUE_GOAL_Y = 142.0;
 
 
-    private static final double TPS_LOW  = 1080.0;
-    private static final double TPS_HIGH = 1400.0;
+    private static final double TPS_LOW  = 1150.0;
+    private static final double TPS_HIGH = 1500.0;
     private static final double TPS_IDLE =  800.0;
 
 
@@ -142,9 +142,9 @@ public class TeleOperado extends OpMode {
         follower.update();
 
 
-        double y     = -gamepad1.left_stick_y*0.75;
-        double x     =  (gamepad1.left_stick_x * 1.1)*0.75;
-        double rx    =  gamepad1.right_stick_x*0.75;
+        double y     = -gamepad1.left_stick_y*0.85;
+        double x     =  (gamepad1.left_stick_x * 1.1)*0.85;
+        double rx    =  gamepad1.right_stick_x*0.85;
         double denom =  Math.max(Math.abs(y) + Math.abs(x) + Math.abs(rx), 1.0);
         setDrive(y, x, rx, denom);
 

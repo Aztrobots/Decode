@@ -16,53 +16,55 @@ public class ShooterSubsystem {
     public static double TOLERANCE = 30.0;
     public static double MAX_TPS   = 2200.0;
 
-
-    public static double GATE_OPEN_DELAY_S = 0;
-    public static double BURST_DURATION    = 0.5;
-    public static double BURST_FORCE_TIMEOUT = 1;
-
+    public static double GATE_OPEN_DELAY_S   = 0.15;
+    public static double BURST_DURATION      = 0.5;
+    public static double BURST_FORCE_TIMEOUT = 1.0;
 
     public enum ShooterState { SHOOTER_ON, SHOOTER_OFF }
     public ShooterState state = ShooterState.SHOOTER_OFF;
 
-    // ─── FSM BURST ────────────────────────────────────────────────────────────
-    // OPENING: gate abre, intake quieto — espera GATE_OPEN_DELAY_S
-    // BURSTING: intake empuja el ARTIFACT — espera BURST_DURATION
-    // DONE:     gate cerrado, listo para resetBurst()
     public enum ShootState { IDLE, OPENING, BURSTING, DONE }
-    private ShootState    shootState = ShootState.IDLE;
+    private ShootState shootState = ShootState.IDLE;
+
     private final ElapsedTime shootTimer = new ElapsedTime();
-    private boolean forcedBurst = false;
+    private boolean           forcedBurst = false;
 
+    private double        targetTPS   = 0;
+    private double        lastError   = 0;
+    private double        integralSum = 0;
+    private final ElapsedTime pidTimer = new ElapsedTime();
+    private boolean       pidFirstRun = true;
 
-    private double targetTPS   = 0;
-    private double lastError   = 0;
-    private double integralSum = 0;
-    private final ElapsedTime pidTimer    = new ElapsedTime();
-    private boolean           pidFirstRun = true;
-
-
+    // caché inicializado a NaN — el guard maneja NaN explícitamente
     private double cachedGatePos    = Double.NaN;
     private double cachedFlywheelPw = Double.NaN;
+    private static final double POWER_CACHE_EPSILON = 1e-6;
 
     private final Hardware hw;
 
-
     public ShooterSubsystem(Hardware hw) { this.hw = hw; }
 
-
+    // ─── SETTERS / GETTERS ────────────────────────────────────────────────────
 
     public void setTargetVelocity(double tps) { setTargetTPS(tps); }
 
     public void setTargetTPS(double tps) {
         targetTPS = Math.min(Math.abs(tps), MAX_TPS);
-        if (tps <= 0) { integralSum = 0; lastError = 0; }
+        if (tps <= 0) {
+            integralSum = 0;
+            lastError   = 0;
+            pidFirstRun = true;
+        }
     }
 
-    public double getTargetTPS()  { return targetTPS; }
+    public double getTargetTPS() { return targetTPS; }
 
+    // Usa Math.min: el PIDF reacciona al motor más rezagado (worst-case)
     public double getCurrentTPS() {
-        return (Math.abs(hw.flyWheel.getVelocity()) + Math.abs(hw.fwl.getVelocity())) / 2.0;
+        return Math.min(
+                Math.abs(hw.flyWheel.getVelocity()),
+                Math.abs(hw.fwl.getVelocity())
+        );
     }
 
     public boolean atTarget()  { return isAtSpeed(); }
@@ -71,11 +73,12 @@ public class ShooterSubsystem {
         return targetTPS > 0 && Math.abs(targetTPS - getCurrentTPS()) < TOLERANCE;
     }
 
+    // ─── LATCH ────────────────────────────────────────────────────────────────
 
-
-    public void openLatch()  { setGate(Hardware.GATE_OPEN); }
+    public void openLatch()  { setGate(Hardware.GATE_OPEN);  }
     public void closeLatch() { setGate(Hardware.GATE_BLOCK); }
 
+    // ─── BURST FSM API ────────────────────────────────────────────────────────
 
     public boolean shootBurst() {
         if (shootState == ShootState.DONE) return true;
@@ -98,26 +101,21 @@ public class ShooterSubsystem {
         closeLatch();
     }
 
-
-
     public void triggerShoot() {
-        if (shootState == ShootState.IDLE) {
-            startBurst(!isAtSpeed());
-        }
+        if (shootState == ShootState.IDLE) startBurst(!isAtSpeed());
     }
 
+    // ─── STATE QUERIES ────────────────────────────────────────────────────────
 
     public boolean isIntakeActive() { return shootState == ShootState.BURSTING; }
-
-    public boolean isShooting()  { return shootState == ShootState.OPENING
-            || shootState == ShootState.BURSTING; }
-    public boolean isBursting()  { return shootState == ShootState.BURSTING; }
-    public boolean isShootDone() { return shootState == ShootState.DONE; }
-    public boolean isBurstDone() { return shootState == ShootState.DONE; }
-    public void resetShootFSM()  { resetBurst(); }
+    public boolean isShooting()     { return shootState == ShootState.OPENING || shootState == ShootState.BURSTING; }
+    public boolean isBursting()     { return shootState == ShootState.BURSTING; }
+    public boolean isShootDone()    { return shootState == ShootState.DONE; }
+    public boolean isBurstDone()    { return shootState == ShootState.DONE; }
+    public void    resetShootFSM()  { resetBurst(); }
     public ShootState getShootState() { return shootState; }
 
-
+    // ─── UPDATE PRINCIPAL ─────────────────────────────────────────────────────
 
     public void update() {
         updateFlywheel();
@@ -138,7 +136,8 @@ public class ShooterSubsystem {
                 break;
 
             case BURSTING:
-                if (shootTimer.seconds() >= BURST_DURATION) {
+                double burstTimeout = forcedBurst ? BURST_FORCE_TIMEOUT : BURST_DURATION;
+                if (shootTimer.seconds() >= burstTimeout) {
                     closeLatch();
                     shootState = ShootState.DONE;
                 }
@@ -149,13 +148,13 @@ public class ShooterSubsystem {
         }
     }
 
-
+    // ─── INTERNALS ────────────────────────────────────────────────────────────
 
     private void startBurst(boolean forced) {
         forcedBurst = forced;
-        openLatch();          // servo empieza a abrir
-        shootTimer.reset();   // empieza a contar GATE_OPEN_DELAY_S
-        shootState = ShootState.OPENING;  // intake quieto hasta que el servo abra
+        openLatch();
+        shootTimer.reset();
+        shootState = ShootState.OPENING;
     }
 
     private void updateFlywheel() {
@@ -178,21 +177,28 @@ public class ShooterSubsystem {
 
         double derivative = (dt > 0.001) ? (error - lastError) / dt : 0;
 
-        if (Math.abs(error) < TOLERANCE * 2) integralSum += error * dt;
-        else integralSum = 0;
+        // Anti-windup: no acumula integral cuando el output está saturado
+        double rawPower  = (F * targetTPS) + (P * error) + (I * integralSum) + (D * derivative);
+        boolean saturated = rawPower >= 1.0 || rawPower <= 0.0;
+        if (Math.abs(error) < TOLERANCE * 2 && !saturated) {
+            integralSum += error * dt;
+        }
 
         lastError = error;
 
-        double power = (F * targetTPS) + (P * error) + (I * integralSum) + (D * derivative);
-        setFlywheelPower(Math.max(0, Math.min(1, power)));
+        setFlywheelPower(Math.max(0, Math.min(1, rawPower)));
     }
 
     private void setGate(double pos) {
-        if (cachedGatePos != pos) { hw.leftGate.setPosition(pos); cachedGatePos = pos; }
+        if (cachedGatePos != pos) {
+            hw.leftGate.setPosition(pos);
+            cachedGatePos = pos;
+        }
     }
 
     private void setFlywheelPower(double power) {
-        if (cachedFlywheelPw != power) {
+        // FIX: NaN en caché inicial hace que NaN - power = NaN > epsilon = false → motores nunca arrancan
+        if (Double.isNaN(cachedFlywheelPw) || Math.abs(cachedFlywheelPw - power) > POWER_CACHE_EPSILON) {
             hw.flyWheel.setPower(power);
             hw.fwl.setPower(power);
             cachedFlywheelPw = power;
