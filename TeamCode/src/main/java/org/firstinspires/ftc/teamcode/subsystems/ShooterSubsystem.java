@@ -8,7 +8,7 @@ import org.firstinspires.ftc.teamcode.tools.Hardware;
 @Config
 public class ShooterSubsystem {
 
-    // ─── GANANCIAS PIDF ───────────────────────────────────────────────────────
+    // PIDF
     public static double F         = 0.0004545454;
     public static double P         = 0.005;
     public static double I         = 0.0;
@@ -35,7 +35,7 @@ public class ShooterSubsystem {
     private final ElapsedTime pidTimer = new ElapsedTime();
     private boolean       pidFirstRun = true;
 
-    // caché inicializado a NaN — el guard maneja NaN explícitamente
+    // caché
     private double cachedGatePos    = Double.NaN;
     private double cachedFlywheelPw = Double.NaN;
     private static final double POWER_CACHE_EPSILON = 1e-6;
@@ -44,7 +44,7 @@ public class ShooterSubsystem {
 
     public ShooterSubsystem(Hardware hw) { this.hw = hw; }
 
-    // ─── SETTERS / GETTERS ────────────────────────────────────────────────────
+    // Getters
 
     public void setTargetVelocity(double tps) { setTargetTPS(tps); }
 
@@ -73,12 +73,11 @@ public class ShooterSubsystem {
         return targetTPS > 0 && Math.abs(targetTPS - getCurrentTPS()) < TOLERANCE;
     }
 
-    // ─── LATCH ────────────────────────────────────────────────────────────────
 
     public void openLatch()  { setGate(Hardware.GATE_OPEN);  }
     public void closeLatch() { setGate(Hardware.GATE_BLOCK); }
 
-    // ─── BURST FSM API ────────────────────────────────────────────────────────
+    //Burst API
 
     public boolean shootBurst() {
         if (shootState == ShootState.DONE) return true;
@@ -105,7 +104,7 @@ public class ShooterSubsystem {
         if (shootState == ShootState.IDLE) startBurst(!isAtSpeed());
     }
 
-    // ─── STATE QUERIES ────────────────────────────────────────────────────────
+    // Queries
 
     public boolean isIntakeActive() { return shootState == ShootState.BURSTING; }
     public boolean isShooting()     { return shootState == ShootState.OPENING || shootState == ShootState.BURSTING; }
@@ -115,7 +114,7 @@ public class ShooterSubsystem {
     public void    resetShootFSM()  { resetBurst(); }
     public ShootState getShootState() { return shootState; }
 
-    // ─── UPDATE PRINCIPAL ─────────────────────────────────────────────────────
+
 
     public void update() {
         updateFlywheel();
@@ -148,7 +147,7 @@ public class ShooterSubsystem {
         }
     }
 
-    // ─── INTERNALS ────────────────────────────────────────────────────────────
+    // INTERNALS
 
     private void startBurst(boolean forced) {
         forcedBurst = forced;
@@ -197,7 +196,6 @@ public class ShooterSubsystem {
     }
 
     private void setFlywheelPower(double power) {
-        // FIX: NaN en caché inicial hace que NaN - power = NaN > epsilon = false → motores nunca arrancan
         if (Double.isNaN(cachedFlywheelPw) || Math.abs(cachedFlywheelPw - power) > POWER_CACHE_EPSILON) {
             hw.flyWheel.setPower(power);
             hw.fwl.setPower(power);

@@ -14,34 +14,7 @@ import org.firstinspires.ftc.teamcode.subsystems.ShooterSubsystem;
 import org.firstinspires.ftc.teamcode.subsystems.TurretSubsystem;
 import org.firstinspires.ftc.teamcode.tools.Hardware;
 
-/**
- * TeleOperado — drivetrain manual + AIMBOT del turret con tracking de Pedro.
- *
- * Diseño de odometría:
- *   Hardware(this, false) → ownsPinpoint=true, resetPinpoint=false.
- *     - Configura encoderResolution y encoderDirections (FORWARD/REVERSED) sin resetear.
- *     - La pose acumulada del Pinpoint se mantiene.
- *   createFollower() → Pedro crea PinpointLocalizer con la misma config → tracking live.
- *     - NO se llama setStartingPose() → Pedro arranca desde su origen (0,0,0) y trackea
- *       en vivo. Mismo comportamiento que TeleOperadoHonduras (validado).
- *   follower.update() en loop → solo updatePose() cuando no hay path activo
- *     (Follower.update() retorna en "if (currentPath == null) return") → no interfiere
- *     con el drivetrain manual.
- *
- * Nota: NO llamar follower.startTeleopDrive() → eso activa manualDrive=true y Pedro
- *   intentaría controlar los motores. Usamos follower solo para odometría aquí.
- *
- * Botones:
- *   GP1 left_trigger  → OUTTAKE
- *   GP1 right_trigger → COLLECTING
- *   GP1 right_bumper  → SHOOT (flanco de subida)
- *   GP1 x             → TPS_LOW  (1080)
- *   GP1 b             → TPS_HIGH (1400)
- *   GP1 a             → TPS_IDLE (800)
- *   GP2 right_stick_x → Turret manual
- *   GP2 y             → Turret vuelve a AIMBOT
- *   GP1 right_bumper (init_loop) → toggle alianza
- */
+
 @TeleOp(name = "TeleOp", group = "!")
 public class TeleOperado extends OpMode {
 

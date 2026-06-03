@@ -50,7 +50,7 @@ public class Hardware {
     public OpMode opMode() { return opMode; }
 
     public void init() {
-        // ── Motores ──────────────────────────────────────────────────────────
+        // Motors
         flyWheel = opMode.hardwareMap.get(DcMotorEx.class, "flyWheel");
         flyWheel.setDirection(DcMotor.Direction.FORWARD);
         flyWheel.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);

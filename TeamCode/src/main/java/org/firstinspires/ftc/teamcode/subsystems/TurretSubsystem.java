@@ -8,16 +8,15 @@ import org.firstinspires.ftc.teamcode.tools.Hardware;
 @Config
 public class TurretSubsystem {
 
-    // ─── CONSTANTES MECÁNICAS ─────────────────────────────────────────────────
+
     public static double TICKS_PER_REV = 384.54 * 1.95; // 749.85 t/rev
 
-    // Derivado en runtime para evitar desincronización si Dashboard modifica TICKS_PER_REV
     private static double ticksPerRad() { return TICKS_PER_REV / (2.0 * Math.PI); }
 
     public static double MAX_TICKS =  312.0;
     public static double MIN_TICKS = -262.0;
 
-    // ─── GANANCIAS ────────────────────────────────────────────────────────────
+    // PIDF
     public static double KP_FAR  = 0.03;
     public static double KD_FAR  = 0.0004;
     public static double KS_FAR  = 0.2;
@@ -30,12 +29,12 @@ public class TurretSubsystem {
     public static double MAX_POWER         = 0.65;
     public static double AT_TARGET_TOL     = 10.0;
 
-    // ─── OBJETIVO EN EL CAMPO ─────────────────────────────────────────────────
+    // Goal
     public static double GOAL_X            = 142.0;
     public static double GOAL_Y            = 142.0;
     public static double TURRET_OFFSET_RAD = 0.0;
 
-    // ─── ESTADO ───────────────────────────────────────────────────────────────
+    // Estados
     public enum TurretMode { AIMBOT, MANUAL, HOLD }
     private TurretMode mode = TurretMode.MANUAL;
 
@@ -48,14 +47,14 @@ public class TurretSubsystem {
 
     private final Hardware hw;
 
-    // ─── CONSTRUCTOR ──────────────────────────────────────────────────────────
+    // Constructor
     public TurretSubsystem(Hardware hw) {
         this.hw           = hw;
         this.targetTicks  = clampTicks(hw.turret.getCurrentPosition());
         this.lastPosition = this.targetTicks;
     }
 
-    // ─── API PÚBLICA ──────────────────────────────────────────────────────────
+    // API
 
     public void setMode(TurretMode newMode) {
         if (this.mode == newMode) return;
@@ -90,7 +89,7 @@ public class TurretSubsystem {
         return Math.abs(getCurrentTicks() - targetTicks) < AT_TARGET_TOL;
     }
 
-    // ─── UPDATE ───────────────────────────────────────────────────────────────
+    // UPDATE
 
     public void update() {
         switch (mode) {
@@ -100,7 +99,7 @@ public class TurretSubsystem {
         }
     }
 
-    // ─── MODOS PRIVADOS ───────────────────────────────────────────────────────
+
 
     private void updateAimbot() {
         org.firstinspires.ftc.robotcore.external.navigation.Pose2D pose =
@@ -133,7 +132,7 @@ public class TurretSubsystem {
         }
     }
 
-    // ─── CONTROLADOR DUAL-PD + kS ────────────────────────────────────────────
+    // PD
 
     private void runPD(double target) {
         double current = getCurrentTicks();
@@ -148,7 +147,7 @@ public class TurretSubsystem {
         double dt = pdTimer.seconds();
         pdTimer.reset();
 
-        // D sobre posición — evita derivative kick cuando el aimbot actualiza target cada loop
+        // D sobre posición — evita kick cuando el aimbot actualiza target cada loop
         double dPosition = (dt > 0.001) ? (current - lastPosition) / dt : 0.0;
         lastPosition = current;
 
@@ -168,7 +167,7 @@ public class TurretSubsystem {
         hw.turret.setPower(Math.max(-MAX_POWER, Math.min(MAX_POWER, power)));
     }
 
-    // ─── UTILIDADES ───────────────────────────────────────────────────────────
+    // Utils
 
     private double clampTicks(double ticks) {
         return Math.max(MIN_TICKS, Math.min(MAX_TICKS, ticks));

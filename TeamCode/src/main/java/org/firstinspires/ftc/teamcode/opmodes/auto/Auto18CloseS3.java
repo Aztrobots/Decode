@@ -21,7 +21,7 @@ import org.firstinspires.ftc.teamcode.subsystems.TurretSubsystem;
 @Autonomous(name = "18 Close S3 [RED]", group = "!")
 public class Auto18CloseS3 extends OpMode {
 
-    // ─── FIELD CONSTANTS ─────────────────────────────────────────────────────
+    // Field Constants
     private static final Pose START_POSE  = new Pose(123.781, 121.688, Math.toRadians(35));
     private static final Pose SHOOT_POSE  = new Pose(99.984,   83.672, Math.toRadians(0));
     private static final Pose GATE_TAKE1  = new Pose(134.000,  60.000, Math.toRadians(35));
@@ -30,11 +30,11 @@ public class Auto18CloseS3 extends OpMode {
 
     private static final long DRIVE_SETTLE_MS = 80;
 
-    // ─── OBJECTS ─────────────────────────────────────────────────────────────
+    // Objects
     private Follower  follower;
     private AutoRobot robot;
 
-    // ─── PATHS ───────────────────────────────────────────────────────────────
+    // Paths
     private PathChain PreLoad;
     private PathChain Stack1;
     private PathChain Shoot;
@@ -47,7 +47,7 @@ public class Auto18CloseS3 extends OpMode {
     private PathChain toGate3;
     private PathChain shootFromGate3;
 
-    // ─── FSM ─────────────────────────────────────────────────────────────────
+    // FSM
     private enum AutoState {
         PRELOAD,        SHOOT_PRELOAD,
         STACK1,
@@ -66,7 +66,7 @@ public class Auto18CloseS3 extends OpMode {
     private boolean shotFired    = false;
     private boolean pathEndArmed = false;
 
-    // ─── INIT ────────────────────────────────────────────────────────────────
+    // Init
     @Override
     public void init() {
         GoBildaPinpointDriver pinpoint =
@@ -90,7 +90,7 @@ public class Auto18CloseS3 extends OpMode {
         telemetry.update();
     }
 
-    // ─── START ───────────────────────────────────────────────────────────────
+    // Start
     @Override
     public void start() {
         matchTimer.reset();
@@ -101,7 +101,7 @@ public class Auto18CloseS3 extends OpMode {
         state = AutoState.PRELOAD;
     }
 
-    // ─── LOOP ────────────────────────────────────────────────────────────────
+    // Loop
     @Override
     public void loop() {
         follower.update();
@@ -130,12 +130,12 @@ public class Auto18CloseS3 extends OpMode {
         telemetry.update();
     }
 
-    // ─── HELPERS ─────────────────────────────────────────────────────────────
+    // Helpers
     private boolean atEnd() {
         return pathEndArmed && follower.atParametricEnd();
     }
 
-    // ─── FSM ─────────────────────────────────────────────────────────────────
+    // FSM
     private void runFSM() {
         switch (state) {
 
@@ -220,8 +220,6 @@ public class Auto18CloseS3 extends OpMode {
                 }
                 break;
 
-            // ══ GATE CYCLE 1 ══════════════════════════════════════════════════
-
             case GATE1:
                 if (atEnd()) {
                     follower.holdPoint(new BezierPoint(GATE_TAKE1), GATE_TAKE1.getHeading());
@@ -258,8 +256,6 @@ public class Auto18CloseS3 extends OpMode {
                 }
                 break;
 
-            // ══ GATE CYCLE 2 ══════════════════════════════════════════════════
-
             case GATE2:
                 if (atEnd()) {
                     follower.holdPoint(new BezierPoint(GATE_TAKE2), GATE_TAKE2.getHeading());
@@ -295,8 +291,6 @@ public class Auto18CloseS3 extends OpMode {
                     transition(AutoState.GATE3);
                 }
                 break;
-
-            // ══ GATE CYCLE 3 ══════════════════════════════════════════════════
 
             case GATE3:
                 if (atEnd()) {
@@ -336,8 +330,6 @@ public class Auto18CloseS3 extends OpMode {
                 break;
         }
     }
-
-    // ─── BUILD PATHS ─────────────────────────────────────────────────────────
     private void buildPaths() {
 
         PreLoad = follower.pathBuilder()
@@ -421,7 +413,7 @@ public class Auto18CloseS3 extends OpMode {
 
     }
 
-    // ─── UTILS ───────────────────────────────────────────────────────────────
+    // Utils
     private long phaseEntryTime = 0;
 
     private void transition(AutoState newState) {

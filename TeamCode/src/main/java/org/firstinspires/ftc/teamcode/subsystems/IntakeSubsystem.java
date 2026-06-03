@@ -8,7 +8,7 @@ import org.firstinspires.ftc.teamcode.tools.Hardware;
 @Config
 public class IntakeSubsystem {
 
-    // ─── CONFIGURABLES ────────────────────────────────────────────────────────
+
     public static double INTAKE_POWER      =  1.0;
     public static double INTAKE_SLOW_POWER =  0.8;
     public static double OUTTAKE_POWER     = -1.0;
@@ -35,8 +35,7 @@ public class IntakeSubsystem {
 
     public IntakeSubsystem(Hardware hw) { this.hw = hw; }
 
-    // ─── API ──────────────────────────────────────────────────────────────────
-
+    // API
     public void setState(IntakeState newState) {
         if (this.state != newState) {
             if (newState == IntakeState.COLLECTING) {
@@ -51,6 +50,7 @@ public class IntakeSubsystem {
         this.state = newState;
     }
 
+
     public IntakeState getState() { return state; }
 
     public boolean intakeFull() { return detectedFull; }
@@ -60,7 +60,6 @@ public class IntakeSubsystem {
         collecting   = false;
     }
 
-    // ─── UPDATE ───────────────────────────────────────────────────────────────
 
     public void update() {
         if (collecting && collectTimer.milliseconds() >= FULL_TIMEOUT_MS) {
@@ -84,10 +83,9 @@ public class IntakeSubsystem {
         }
     }
 
-    // ─── INTERNAL ─────────────────────────────────────────────────────────────
 
     private void setIntake(double power) {
-        // NaN-safe: igual que flywheel, primer ciclo siempre pasa
+
         if (Double.isNaN(cachedIntakePw) || cachedIntakePw != power) {
             hw.intake.setPower(power);
             cachedIntakePw = power;
