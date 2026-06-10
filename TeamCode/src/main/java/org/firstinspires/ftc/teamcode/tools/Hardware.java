@@ -19,8 +19,8 @@ public class Hardware {
 
     public GoBildaPinpointDriver pinpoint;
 
-    public static final double GATE_BLOCK = 0.54;
-    public static final double GATE_OPEN  = 0.7;
+    public static final double GATE_BLOCK = 0.5;
+    public static final double GATE_OPEN  = 0.72;
 
 
     private final boolean ownsPinpoint;
@@ -64,7 +64,7 @@ public class Hardware {
         fwl.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
 
         intake = opMode.hardwareMap.get(DcMotorEx.class, "intake");
-        intake.setDirection(DcMotor.Direction.FORWARD);
+        intake.setDirection(DcMotor.Direction.REVERSE);
         intake.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
         intake.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
 

@@ -8,117 +8,115 @@ import org.firstinspires.ftc.teamcode.tools.Hardware;
 @Config
 public class ShooterSubsystem {
 
-    // PIDF
-    public static double F         = 0.0004545454;
-    public static double P         = 0.005;
+    // ─── GANANCIAS PIDF ───────────────────────────────────────────────────────
+    public static double F         = 0.00054945;
+    public static double P         = 0.0045;     // era 0.0015 — recuperación post-burst más agresiva
     public static double I         = 0.0;
     public static double D         = 0.0;
-    public static double TOLERANCE = 30.0;
-    public static double MAX_TPS   = 2200.0;
+    public static double TOLERANCE = 85.0;       // era 40 — isAtSpeed() dispara antes sin penalizar precisión
+    public static double MAX_TPS   = 1820.0;
 
-    public static double GATE_OPEN_DELAY_S   = 0.15;
-    public static double BURST_DURATION      = 0.5;
-    public static double BURST_FORCE_TIMEOUT = 1.0;
+    public static double GATE_OPEN_DELAY_S = 0;
+    public static double BURST_DURATION    = 0.55;
 
-    public enum ShooterState { SHOOTER_ON, SHOOTER_OFF }
+    // ─── ESTADOS ──────────────────────────────────────────────────────────────
+    public enum ShooterState  { SHOOTER_ON, SHOOTER_OFF }
     public ShooterState state = ShooterState.SHOOTER_OFF;
 
     public enum ShootState { IDLE, OPENING, BURSTING, DONE }
     private ShootState shootState = ShootState.IDLE;
 
+    // ─── PIDF STATE ───────────────────────────────────────────────────────────
+    private double            targetTPS   = 0;
+    private double            lastError   = 0;
+    private double            integralSum = 0;
+    private final ElapsedTime pidTimer    = new ElapsedTime();
+    private boolean           pidFirstRun = true;
+
+    // ─── BURST TIMER ─────────────────────────────────────────────────────────
     private final ElapsedTime shootTimer = new ElapsedTime();
-    private boolean           forcedBurst = false;
 
-    private double        targetTPS   = 0;
-    private double        lastError   = 0;
-    private double        integralSum = 0;
-    private final ElapsedTime pidTimer = new ElapsedTime();
-    private boolean       pidFirstRun = true;
-
-    // caché
+    // ─── CACHE ───────────────────────────────────────────────────────────────
     private double cachedGatePos    = Double.NaN;
     private double cachedFlywheelPw = Double.NaN;
-    private static final double POWER_CACHE_EPSILON = 1e-6;
 
     private final Hardware hw;
 
     public ShooterSubsystem(Hardware hw) { this.hw = hw; }
 
-    // Getters
-
-    public void setTargetVelocity(double tps) { setTargetTPS(tps); }
+    // ─── API PÚBLICA ──────────────────────────────────────────────────────────
 
     public void setTargetTPS(double tps) {
         targetTPS = Math.min(Math.abs(tps), MAX_TPS);
-        if (tps <= 0) {
-            integralSum = 0;
-            lastError   = 0;
-            pidFirstRun = true;
-        }
+        if (tps <= 0) { integralSum = 0; lastError = 0; }
     }
 
-    public double getTargetTPS() { return targetTPS; }
+    public void setRawPower(double power) {
+        state = ShooterState.SHOOTER_OFF;  // congela PIDF
+        hw.flyWheel.setPower(power);
+        hw.fwl.setPower(power);
+        cachedFlywheelPw = power;
+    }
 
-    // Usa Math.min: el PIDF reacciona al motor más rezagado (worst-case)
+    /** Alias para compatibilidad con llamadas existentes. */
+    public void setTargetVelocity(double tps) { setTargetTPS(tps); }
+
+    public double getTargetTPS()  { return targetTPS; }
+
     public double getCurrentTPS() {
-        return Math.min(
-                Math.abs(hw.flyWheel.getVelocity()),
-                Math.abs(hw.fwl.getVelocity())
-        );
+        return (Math.abs(hw.flyWheel.getVelocity()) + Math.abs(hw.fwl.getVelocity())) / 2.0;
     }
-
-    public boolean atTarget()  { return isAtSpeed(); }
 
     public boolean isAtSpeed() {
         return targetTPS > 0 && Math.abs(targetTPS - getCurrentTPS()) < TOLERANCE;
     }
 
-
-    public void openLatch()  { setGate(Hardware.GATE_OPEN);  }
-    public void closeLatch() { setGate(Hardware.GATE_BLOCK); }
-
-    //Burst API
-
-    public boolean shootBurst() {
-        if (shootState == ShootState.DONE) return true;
-        if (shootState == ShootState.IDLE) {
-            if (!isAtSpeed()) return false;
-            startBurst(false);
-        }
-        return false;
+    /**
+     * Dispara SOLO si el flywheel está dentro de TOLERANCE del targetTPS.
+     * El gate NUNCA abre si no está a velocidad. Solo para TeleOp.
+     *
+     * @return true si el burst fue iniciado, false si fue bloqueado por velocidad.
+     */
+    public boolean triggerShoot() {
+        if (shootState != ShootState.IDLE) return false;
+        if (!isAtSpeed())                  return false;   // HARD BLOCK
+        startBurst();
+        return true;
     }
 
-    public boolean shootBurstForced() {
-        if (shootState == ShootState.DONE) return true;
-        if (shootState == ShootState.IDLE) startBurst(true);
-        return false;
+    /**
+     * Inicia burst incondicionalmente. Solo para uso en Auto.
+     * TeleOp SIEMPRE usa triggerShoot().
+     */
+    public void triggerShootAuto() {
+        if (shootState != ShootState.IDLE) return;
+        startBurst();
     }
 
-    public void resetBurst() {
-        shootState  = ShootState.IDLE;
-        forcedBurst = false;
+    public void resetShootFSM() {
+        shootState = ShootState.IDLE;
         closeLatch();
     }
 
-    public void triggerShoot() {
-        if (shootState == ShootState.IDLE) startBurst(!isAtSpeed());
-    }
+    // ─── QUERIES DE ESTADO ────────────────────────────────────────────────────
 
-    // Queries
-
-    public boolean isIntakeActive() { return shootState == ShootState.BURSTING; }
-    public boolean isShooting()     { return shootState == ShootState.OPENING || shootState == ShootState.BURSTING; }
-    public boolean isBursting()     { return shootState == ShootState.BURSTING; }
-    public boolean isShootDone()    { return shootState == ShootState.DONE; }
-    public boolean isBurstDone()    { return shootState == ShootState.DONE; }
-    public void    resetShootFSM()  { resetBurst(); }
+    public boolean isBursting()  { return shootState == ShootState.BURSTING; }
+    public boolean isShootDone() { return shootState == ShootState.DONE;     }
     public ShootState getShootState() { return shootState; }
 
-
+    // ─── UPDATE LOOP ──────────────────────────────────────────────────────────
 
     public void update() {
         updateFlywheel();
         updateBurstFSM();
+    }
+
+    // ─── INTERNOS ─────────────────────────────────────────────────────────────
+
+    private void startBurst() {
+        openLatch();
+        shootTimer.reset();
+        shootState = ShootState.OPENING;
     }
 
     private void updateBurstFSM() {
@@ -135,8 +133,7 @@ public class ShooterSubsystem {
                 break;
 
             case BURSTING:
-                double burstTimeout = forcedBurst ? BURST_FORCE_TIMEOUT : BURST_DURATION;
-                if (shootTimer.seconds() >= burstTimeout) {
+                if (shootTimer.seconds() >= BURST_DURATION) {
                     closeLatch();
                     shootState = ShootState.DONE;
                 }
@@ -145,15 +142,6 @@ public class ShooterSubsystem {
             case DONE:
                 break;
         }
-    }
-
-    // INTERNALS
-
-    private void startBurst(boolean forced) {
-        forcedBurst = forced;
-        openLatch();
-        shootTimer.reset();
-        shootState = ShootState.OPENING;
     }
 
     private void updateFlywheel() {
@@ -170,33 +158,35 @@ public class ShooterSubsystem {
             pidFirstRun = false;
         }
 
-        double error = targetTPS - getCurrentTPS();
-        double dt    = pidTimer.seconds();
+        double error      = targetTPS - getCurrentTPS();
+        double dt         = pidTimer.seconds();
         pidTimer.reset();
 
         double derivative = (dt > 0.001) ? (error - lastError) / dt : 0;
 
-        // Anti-windup: no acumula integral cuando el output está saturado
-        double rawPower  = (F * targetTPS) + (P * error) + (I * integralSum) + (D * derivative);
-        boolean saturated = rawPower >= 1.0 || rawPower <= 0.0;
-        if (Math.abs(error) < TOLERANCE * 2 && !saturated) {
-            integralSum += error * dt;
+        // Anti-windup: clamp a >= 0 porque el flywheel no puede frenarse activamente.
+        // Evita que el integral acumule negativos durante la rampa de bajada (far→near TPS).
+        if (Math.abs(error) < TOLERANCE * 2) {
+            integralSum = Math.max(0, integralSum + error * dt);
+        } else {
+            integralSum = 0;
         }
 
         lastError = error;
 
-        setFlywheelPower(Math.max(0, Math.min(1, rawPower)));
+        double power = (F * targetTPS) + (P * error) + (I * integralSum) + (D * derivative);
+        setFlywheelPower(Math.max(0, Math.min(1, power)));
     }
 
+    private void openLatch()  { setGate(Hardware.GATE_OPEN);  }
+    private void closeLatch() { setGate(Hardware.GATE_BLOCK); }
+
     private void setGate(double pos) {
-        if (cachedGatePos != pos) {
-            hw.leftGate.setPosition(pos);
-            cachedGatePos = pos;
-        }
+        if (cachedGatePos != pos) { hw.leftGate.setPosition(pos); cachedGatePos = pos; }
     }
 
     private void setFlywheelPower(double power) {
-        if (Double.isNaN(cachedFlywheelPw) || Math.abs(cachedFlywheelPw - power) > POWER_CACHE_EPSILON) {
+        if (cachedFlywheelPw != power) {
             hw.flyWheel.setPower(power);
             hw.fwl.setPower(power);
             cachedFlywheelPw = power;

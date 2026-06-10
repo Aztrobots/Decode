@@ -13,7 +13,7 @@ public class IntakeSubsystem {
     public static double INTAKE_SLOW_POWER =  0.8;
     public static double OUTTAKE_POWER     = -1.0;
 
-    public static double FULL_TIMEOUT_MS = 1200.0;
+    public static double FULL_TIMEOUT_MS = 700;
 
     public enum IntakeState {
         IDLE,

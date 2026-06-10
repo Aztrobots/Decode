@@ -8,6 +8,7 @@ import com.pedropathing.geometry.Pose;
 import com.pedropathing.paths.PathChain;
 import com.qualcomm.hardware.gobilda.GoBildaPinpointDriver;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
+import com.qualcomm.robotcore.eventloop.opmode.Disabled;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import com.qualcomm.robotcore.util.ElapsedTime;
 
@@ -17,16 +18,16 @@ import org.firstinspires.ftc.teamcode.subsystems.IntakeSubsystem;
 import org.firstinspires.ftc.teamcode.subsystems.ShooterSubsystem;
 import org.firstinspires.ftc.teamcode.subsystems.TurretSubsystem;
 
-
+@Disabled
 @Autonomous(name = "18 Close S3 [RED]", group = "!")
 public class Auto18CloseS3 extends OpMode {
 
     // Field Constants
-    private static final Pose START_POSE  = new Pose(123.781, 121.688, Math.toRadians(35));
+    private static final Pose START_POSE  = new Pose(123, 121.5, Math.toRadians(37));
     private static final Pose SHOOT_POSE  = new Pose(99.984,   83.672, Math.toRadians(0));
-    private static final Pose GATE_TAKE1  = new Pose(134.000,  60.000, Math.toRadians(35));
-    private static final Pose GATE_TAKE2  = new Pose(134.000,  60.000, Math.toRadians(35));
-    private static final Pose GATE_TAKE3  = new Pose(134.000,  60.000, Math.toRadians(35));
+    private static final Pose GATE_TAKE1  = new Pose(146,  59.500, Math.toRadians(37));
+    private static final Pose GATE_TAKE2  = new Pose(146,  59.500, Math.toRadians(37));
+    private static final Pose GATE_TAKE3  = new Pose(146,  59.500, Math.toRadians(37));
 
     private static final long DRIVE_SETTLE_MS = 80;
 
@@ -168,7 +169,7 @@ public class Auto18CloseS3 extends OpMode {
                 break;
 
             case BACK_TO_SHOOT:
-                if (inPhaseFor(800)) {
+                if (inPhaseFor(500)) {
                     robot.intake.setState(IntakeSubsystem.IntakeState.IDLE);
                     follower.followPath(Shoot, true);
                     transition(AutoState.SHOOT);
@@ -228,7 +229,7 @@ public class Auto18CloseS3 extends OpMode {
                 break;
 
             case GATE1_HOLD:
-                if (inPhaseFor(2000)) {
+                if (inPhaseFor(1200)) {
                     robot.intake.setState(IntakeSubsystem.IntakeState.IDLE);
                     follower.followPath(shootFromGate1, true);
                     transition(AutoState.BACK_FROM_GATE1);
@@ -264,7 +265,7 @@ public class Auto18CloseS3 extends OpMode {
                 break;
 
             case GATE2_HOLD:
-                if (inPhaseFor(2000)) {
+                if (inPhaseFor(1000)) {
                     robot.intake.setState(IntakeSubsystem.IntakeState.IDLE);
                     follower.followPath(shootFromGate2, true);
                     transition(AutoState.BACK_FROM_GATE2);
@@ -300,7 +301,7 @@ public class Auto18CloseS3 extends OpMode {
                 break;
 
             case GATE3_HOLD:
-                if (inPhaseFor(2000)) {
+                if (inPhaseFor(1200)) {
                     robot.intake.setState(IntakeSubsystem.IntakeState.IDLE);
                     follower.followPath(shootFromGate3, true);
                     transition(AutoState.BACK_FROM_GATE3);
@@ -335,20 +336,20 @@ public class Auto18CloseS3 extends OpMode {
         PreLoad = follower.pathBuilder()
                 .addPath(new BezierLine(
                         new Pose(123.781, 121.688),
-                        new Pose(99.984,   83.672)))
+                        new Pose(98.284,   83.672)))
                 .setLinearHeadingInterpolation(Math.toRadians(35), Math.toRadians(0))
                 .build();
 
         Stack1 = follower.pathBuilder()
                 .addPath(new BezierLine(
                         new Pose(99.984,  83.672),
-                        new Pose(127.531, 83.875)))
+                        new Pose(125.531, 83.875)))
                 .setLinearHeadingInterpolation(Math.toRadians(0), Math.toRadians(0))
                 .build();
 
         Shoot = follower.pathBuilder()
                 .addPath(new BezierLine(
-                        new Pose(127.531, 83.875),
+                        new Pose(125.531, 83.875),
                         new Pose(98.625,  82.844)))
                 .setLinearHeadingInterpolation(Math.toRadians(0), Math.toRadians(0))
                 .build();
@@ -357,13 +358,14 @@ public class Auto18CloseS3 extends OpMode {
                 .addPath(new BezierCurve(
                         new Pose(98.625,  82.844),
                         new Pose(93.250,  55.359),
-                        new Pose(128.781, 59.594)))
+                        new Pose(125.781, 59.594)))
                 .setLinearHeadingInterpolation(Math.toRadians(0), Math.toRadians(0))
+                .setNoDeceleration()
                 .build();
 
         Shoot1 = follower.pathBuilder()
                 .addPath(new BezierCurve(
-                        new Pose(128.781, 59.594),
+                        new Pose(125.781, 59.594),
                         new Pose(96.922,  62.438),
                         new Pose(96.563,  80.594)))
                 .setLinearHeadingInterpolation(Math.toRadians(0), Math.toRadians(0))

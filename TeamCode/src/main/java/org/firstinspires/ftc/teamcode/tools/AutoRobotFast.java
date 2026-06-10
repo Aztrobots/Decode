@@ -7,7 +7,15 @@ import org.firstinspires.ftc.teamcode.subsystems.IntakeSubsystem;
 import org.firstinspires.ftc.teamcode.subsystems.ShooterSubsystem;
 import org.firstinspires.ftc.teamcode.subsystems.TurretSubsystem;
 
-public class AutoRobot {
+/**
+ * Variante de AutoRobot optimizada para ciclos gate rápidos (Explotado21).
+ * AutoCommand está embebido — no depende de AutoRobot en absoluto.
+ *
+ * Diferencias respecto a AutoRobot:
+ *  - AT_SPEED_TIMEOUT_MS: 800 → 500 ms
+ *  - buildShootCommand: Phase 1 espera isAtSpeed() AND turret.atTarget()
+ */
+public class AutoRobotFast {
 
     public final Hardware         hw;
     public final IntakeSubsystem  intake;
@@ -17,15 +25,12 @@ public class AutoRobot {
     public final AutoCommand intakeCommand;
     public AutoCommand       shootCommand;
 
-    public static double SHOOT_FAR_TPS  = 1100;
+    public static double SHOOT_FAR_TPS  = 1080;
     public static double SHOOT_NEAR_TPS = 1050;
 
-    // Tiempo máximo de espera para que el flywheel alcance velocidad objetivo.
-    // Si no llega en este tiempo, el burst se lanza de todas formas (fallback).
-    // 800 ms es conservador — ajustar abajo si el flywheel es más rápido.
-    public static long AT_SPEED_TIMEOUT_MS = 800;
+    public static long AT_SPEED_TIMEOUT_MS = 500;
 
-    public AutoRobot(OpMode opMode) {
+    public AutoRobotFast(OpMode opMode) {
         hw = new Hardware(opMode, false, false);
         hw.init();
         hw.turret.setMode(com.qualcomm.robotcore.hardware.DcMotor.RunMode.STOP_AND_RESET_ENCODER);
@@ -42,7 +47,7 @@ public class AutoRobot {
                 }, 200, () -> false),
 
                 new AutoCommand.Phase(null,
-                        900, () -> intake.intakeFull()),
+                        1000, () -> intake.intakeFull()),
 
                 new AutoCommand.Phase(() -> {
                     intake.setState(IntakeSubsystem.IntakeState.IDLE);
@@ -53,53 +58,43 @@ public class AutoRobot {
     }
 
     /**
-     * Construye un AutoCommand de disparo con las siguientes fases:
-     *
-     * Phase 0 — Ajusta targetVelocity y limpia el FSM del shooter. (50 ms)
-     * Phase 1 — Espera a que el flywheel alcance velocidad objetivo dentro de TOLERANCE.
-     *           Timeout de AT_SPEED_TIMEOUT_MS como fallback para no bloquear el auto.
-     * Phase 2 — Trigger del burst una vez a velocidad. (10 ms — era 50 ms, reducido
-     *           porque triggerShootAuto() es una llamada instantánea sin espera real.)
-     * Phase 3 — Espera gate open (GATE_OPEN_DELAY_S). (offset 10 ms — era 50 ms.)
-     * Phase 4 — Espera burst completo (BURST_DURATION). Exit condition: isShootDone().
-     * Phase 5 — Limpia FSM. (50 ms)
+     * Phase 0 — Setea velocidad y resetea FSM. (10 ms — lógicamente instantáneo)
+     * Phase 1 — Espera flywheel isAtSpeed() AND turret.atTarget().
+     *           Timeout AT_SPEED_TIMEOUT_MS como fallback.
+     * Phase 2 — Trigger. (10 ms)
+     * Phase 3 — Espera gate open. Exit: isBursting().
+     * Phase 4 — Espera burst completo. Exit: isShootDone().
+     * Phase 5 — Limpia FSM. (10 ms — lógicamente instantáneo)
      */
     public AutoCommand buildShootCommand(double velocityTPS) {
         return new AutoCommand(
-                // Phase 0: setea velocidad y resetea FSM — NO dispara todavía
                 new AutoCommand.Phase(() -> {
                     shooter.setTargetVelocity(velocityTPS);
                     shooter.resetShootFSM();
-                }, 50, () -> false),
+                }, 10, () -> false),
 
-                // Phase 1: espera velocidad con timeout de seguridad.
-                // Exit: isAtSpeed() — si expira AT_SPEED_TIMEOUT_MS, avanza igual (fallback).
                 new AutoCommand.Phase(
                         null,
                         AT_SPEED_TIMEOUT_MS,
-                        () -> shooter.isAtSpeed()),
+                        () -> shooter.isAtSpeed() && turret.atTarget()),
 
-                // Phase 2: trigger — reducido 50→10 ms porque triggerShootAuto() es instantáneo
                 new AutoCommand.Phase(() -> {
                     shooter.triggerShootAuto();
                 }, 10, () -> false),
 
-                // Phase 3: espera gate open — offset reducido 50→10 ms
                 new AutoCommand.Phase(
                         null,
                         (long)(ShooterSubsystem.GATE_OPEN_DELAY_S * 1000) + 10,
                         () -> shooter.isBursting()),
 
-                // Phase 4: espera burst completo
                 new AutoCommand.Phase(
                         null,
                         (long)(ShooterSubsystem.BURST_DURATION * 1000) + 100,
                         () -> shooter.isShootDone()),
 
-                // Phase 5: limpia FSM
                 new AutoCommand.Phase(() -> {
                     shooter.resetShootFSM();
-                }, 50, () -> false)
+                }, 10, () -> false)
         );
     }
 
